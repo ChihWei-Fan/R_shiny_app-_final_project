@@ -103,7 +103,6 @@ ui <- fluidPage(
           # Add submit button
           submitButton(text = "Submit",icon = icon("chart-line"))
         ),
-        
         # Show a plot of the generated distribution
         mainPanel(
           tabsetPanel(
