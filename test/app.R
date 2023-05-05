@@ -7,6 +7,7 @@ library(RColorBrewer)
 library(gplots)
 library(SummarizedExperiment)
 library(DT)
+library(ggbeeswarm)
 
 # Define UI for application that draws a histogram
 ui <- fluidPage(
@@ -15,7 +16,7 @@ ui <- fluidPage(
     tabPanel(title = "Sample",
              
              sidebarLayout(
-               sidebarPanel(
+               sidebarPanel( width = 3,
                  fileInput(inputId = "sample_file", label = "Load a CSV file", accept = ".csv"),
                  submitButton(text = "Submit",icon = icon("chart-line"))
                ),
@@ -27,10 +28,16 @@ ui <- fluidPage(
                             tableOutput("sample_summary")
                    ),
                    tabPanel(title = "Table",
-                            tableOutput("sample_table")
+                           div(DT::dataTableOutput("sample_table"), style = "font-size:80%; width: 30%;")
                    ),
                    tabPanel(title = "Plot",
-                            plotOutput("plotname",width = "90%", height = "550px")
+                      sidebarPanel( width = 3,
+                        radioButtons(inputId = "sample_x", label = "select y variable", choices = c("Post mortem interval","Age of death","RNA integrity number","mRNA seq reads"), selected = "Age of death"),
+                        submitButton(text = "Submit",icon = icon("chart-line"))
+                      ),
+                      mainPanel(
+                        plotOutput("sample_plot")
+                      )
                    )
                  )
                )
@@ -39,37 +46,43 @@ ui <- fluidPage(
     
     tabPanel(title = "Counts",
       sidebarLayout(
-        sidebarPanel(
+        sidebarPanel( width = 3,
            #input count matrix
            fileInput(inputId = "count_file", label = "Load a CSV file", accept = ".csv"),
            # Add slider inputs
-           sliderInput(inputId = "slid_var",label = "Choose a threshold value to include gene at least X percentile of variance", min = 0, max = 100, value = 10, step = 1),
-           sliderInput(inputId = "slid_zero",label = "Choose a threshold value to include gene in X sample are non-zero", min = 0, max = 24, value = 5, step = 1),
+           sliderInput(inputId = "slid_var",label = "Choose a threshold value to include gene at least X percentile of variance", min = 1, max = 100, value = 80, step = 1),
+           sliderInput(inputId = "slid_zero",label = "Choose a threshold value to include gene in X sample are non-zero", min = 0, max = 69, value = 60, step = 1),
            submitButton(text = "Submit",icon = icon("chart-line"))
          ),
          
          # Show a plot of the generated distribution
-         mainPanel(
-           tabsetPanel(
-             tabPanel(title = "Filter effect",
-                      tableOutput("filter_count")
-             ),
-             tabPanel(title = "Scatter plot",
-                      plotOutput("count_scatter")
-             ),
-             tabPanel(title = "Heatmap",
-                      plotOutput("clus_heatmap",width = "90%", height = "550px")
-             ),
-             tabPanel(title = "PCA",
-                      plotOutput("pca_plot",width = "90%", height = "550px")
-             )
-           )
-         )
+        mainPanel(
+          tabsetPanel(
+            tabPanel(title = "Filter effect",
+              tableOutput("filter_count")
+            ),
+            tabPanel(title = "Scatter plot",
+              plotOutput("count_scatter")
+            ),
+            tabPanel(title = "Heatmap",
+              plotOutput("clus_heatmap",width = "80%", height = "500px")
+            ),
+            tabPanel(title = "PCA",
+              sidebarPanel(width = 3,
+                sliderInput("top_PC",label = "Select the TOP PCs you want to plot", min = 3, max = 45, value =8, step = 1),
+                submitButton(text = "Submit",icon = icon("chart-line"))
+              ),
+              mainPanel(
+                plotOutput("pca_plot",width = "120%", height = "400px")
+              )
+            )
+          )
+        )
       )
     ),
     tabPanel(title = "DE",
        sidebarLayout(
-         sidebarPanel(
+         sidebarPanel(width = 3,
            #input count matrix
            fileInput(inputId = "deseq_file", label = "Load a CSV file", accept = ".csv"),
            # Add submit button
@@ -79,10 +92,10 @@ ui <- fluidPage(
         mainPanel(
           tabsetPanel(
             tabPanel(title = "DE input file",
-              DT::dataTableOutput("DE_summary")
+              div(DT::dataTableOutput("DE_summary"), style = "font-size:80%; width: 30%;")
             ),
             tabPanel(title = "DE result",
-              sidebarPanel(
+              sidebarPanel(width = 3,
                radioButtons(inputId = "x_axis", label = "select x variable", choices = c("baseMean","log2FoldChange","lfcSE","stat","pvalue","padj"), selected = "log2FoldChange"), #NULL ),
                radioButtons(inputId = "y_axis", label = "select y variable", choices = c("baseMean","log2FoldChange","lfcSE","stat","pvalue","padj"), selected = "padj"),#NULL),
                # Add color inputs
@@ -91,17 +104,17 @@ ui <- fluidPage(
                # Add slider inputs
                sliderInput(inputId = "padj_slider",label = "Choose a padj value as threshold", min = -35, max = 0, value = -8, step = 1),
                #Add a submit buttom
-               submitButton(text = "plot",icon = icon("chart-line")) #style = ......
+               submitButton(text = "plot",icon = icon("chart-line")) 
               ),
               mainPanel(
-               tabsetPanel(
-                 tabPanel(title = "Volcano plot",
-                          plotOutput("volcano",width = "90%", height = "550px")
-                 ),
-                 tabPanel(title = "Padj filtered table",
-                          DT::dataTableOutput("volcano_table")
-                 )
-               )
+                tabsetPanel(
+                  tabPanel(title = "Volcano plot",
+                    plotOutput("volcano",width = "110%", height = "500px")
+                  ),
+                  tabPanel(title = "Padj filtered table",
+                    div(DT::dataTableOutput("volcano_table"), style = "font-size:80%; width: 30%;")
+                  )
+                )
               )
             )
           )
@@ -111,7 +124,7 @@ ui <- fluidPage(
     tabPanel(title = "GSEA",
       # Use DGE results to compute gene set enrichment analysis with fgsea
       sidebarLayout(
-        sidebarPanel(
+        sidebarPanel(width = 3,
           #input count matrix
           fileInput(inputId = "fgsea_file", label = "Load a CSV file", accept = ".csv"),
           # Add submit button
@@ -122,31 +135,35 @@ ui <- fluidPage(
           tabsetPanel(
             tabPanel(title = "Pathway barplot",
               sidebarLayout(
-                sidebarPanel( 
+                sidebarPanel( width = 3,
                   sliderInput(inputId = "pth_threshold",label = "Top results by padj value", min = -48, max = 0, value = -20, step = 1),
                   submitButton(text = "Submit",icon = icon("chart-line"))
                 ),
                 # Show a plot of the fgsea bars of top results
                 mainPanel( 
-                  plotOutput("fgsea_bars")
+                  plotOutput("fgsea_bars",width = "130%", height = "500px")
                 )
               )
             ),
             tabPanel(title = "Pathway table",
               sidebarLayout(
-                sidebarPanel(sliderInput(inputId = "path_slid",label = "filter table by padj value", min = -48, max = 0, value = -20, step = 1),
-                            radioButtons(inputId = "all_path", label = "select pathways",choices = c("All","Postive","Negative"), selected = NULL), 
+                sidebarPanel(width = 3,
+                            sliderInput(inputId = "path_slid",label = "filter table by padj value", min = -48, max = 0, value = -20, step = 1),
+                            radioButtons(inputId = "all_path", label = "select pathways",choices = c("All","Postive","Negative"), selected = NULL),
+                            submitButton(text = "Submit",icon = icon("chart-line")),
                             downloadButton(outputId = "download_fgsea_table", label = "Download")
                 ),
                 # Show a plot of the fgsea bars of top results
                 mainPanel(
-                  DT::dataTableOutput("fgsea_filt_table")
+                  div(DT::dataTableOutput("fgsea_filt_table"), style = "font-size:80%; width: 50%;")
                 )
               )
             ),
             tabPanel(title = "Scatter Plot",
               sidebarLayout(
-                sidebarPanel(sliderInput(inputId = "scatter_slid",label = "filter the plot by padj value", min = -48, max = 0, value = -20, step = 1)
+                sidebarPanel(width = 3,
+                  sliderInput(inputId = "scatter_slid",label = "filter the plot by padj value", min = -48, max = 0, value = -20, step = 1),
+                  submitButton(text = "Submit",icon = icon("chart-line"))
                 ),
                 # Show a plot of the fgsea bars of top results
                 mainPanel( 
@@ -172,7 +189,7 @@ server <- function(input, output, session) {
       mutate(V1 = apply(data["V1"],1, function(x) gsub("!", "", x))) %>% 
       as.data.frame()
     data_info<-data_info[c(1:3,6,8:14),]%>%
-      mutate(Columns = c("GEO accession","Status","Submission date", "Channel count","Organism_source","Tissue_source","Diagnosis", "Post_mortem_interval","Age_of_death","RNA_integrity_number","mRNA_seq_reads"), .before = 1) %>%
+      mutate(Columns = c("GEO accession","Status","Submission date", "Channel count","Organism source","Tissue source","Diagnosis", "Post mortem interval","Age of death","RNA integrity number","mRNA-seq reads"), .before = 1) %>%
       select(-V1)%>%
       t()
     colnames(data_info) <- data_info[1,]
@@ -190,7 +207,7 @@ server <- function(input, output, session) {
   
   summary_tablef <- function(data) {
     # Count number of rows and columns
-    n_rows <- nrow(data)
+    n_rows <- nrow(data[,-1])
     n_cols <- ncol(data)
     
     # Create a data frame with column information
@@ -210,115 +227,116 @@ server <- function(input, output, session) {
     return(col_info%>%as_tibble())
   }
   
-  #generate sample summary table
-  output$sample_summary <- renderTable({
-    dataf <- sample_data()
-    if(is.null(dataf))
-      return(null)
-    samplesum_tab <- summary_tablef(dataf)
-    samplesum_tab
-  }) 
-  
-  #Generate sample file as table
-  output$sample_table <- renderTable({
-    dataf <- sample_data()
-    if(is.null(dataf))
-      return(null)
-    dataf
-  }) 
+  #Generate histogram of sample
+  histogram <- function(df, col_name) {
+    ggplot(df, aes(x = !!sym(col_name))) +
+      geom_histogram(binwidth = 2, color = "black", fill = "purple") +
+      labs(x = col_name, y = "Count")
+  }
   
   #Read in count data
   count_data <- reactive({
     req(input$count_file)
     data <-read.table(input$count_file$datapath, sep="\t", header = TRUE, stringsAsFactors = FALSE)%>%
-      as_tibble()%>%
-      rename(gene = X)
+      as_tibble()%>%dplyr::rename(gene = X)
     return(data)
   })
   
-  filter_table <- function(data, pass_filter2) {
-    count_sum <-tibble(num_zeros = apply(data[, -1], 1, function(x) sum(x == 0))) %>%
-      mutate(determine = ifelse(num_zeros >= pass_filter2, "pass", "fail")) %>%
-      summarise(num_passing = sum(determine == "pass"),
-                perc_passing = round(num_passing/nrow(.) * 100, 2))
+  #Count data filtering table
+  filter_table <- function(data, pass_filter1, pass_filter2) {
+    count_sum <-data[,-1]
+    count_sum$non_zeros <- apply(data[,-1], 1, function(x) sum(x != 0))
+    geneVar <- apply(data[,-1], 1, var)
+    #Count the percentile variance
+    xPercentile <- quantile(geneVar, pass_filter1/100) #assume the filter is 1 to 100
+    #find out which rows pass the filter1
+    pass_xPercentile <- which(geneVar >= xPercentile)
+    #subset the matrix to let the rows that pass remain
+    count_sum <- count_sum[pass_xPercentile, ]
+    count_sum$pass_zero <- ifelse(count_sum$non_zeros >= pass_filter2, "pass", "fail")
+    num_passing <- sum(count_sum$pass_zero == "pass")
+    perc_passing <- round(num_passing/nrow(data[,-1])* 100, 2)
     # Create a data frame with filter information
-    col_info <- data.frame(
-      "Number of samples" = ncol(data),
-      "Number of genes" = nrow(data),
-      "Number and % of genes passing current filter" = paste0("Num of genes ",count_sum[[1]], ", percentage of genes",count_sum[[2]],"%"),
-      "Number and % of genes not passing current filter"= paste0("Num of genes ",nrow(data)-count_sum[[1]], ", percentage of genes",100-count_sum[[2]],"%"),
-      stringsAsFactors = FALSE
+    col_info <- tibble(
+      metric = c("Number of samples", "Number of genes ", "Number of genes passing", " % of genes passing", "Number of genes not passing","% of genes not passing"),
+      value = c(ncol(data[,-1]), nrow(data[,-1]) , num_passing, paste0(perc_passing,"%"), nrow(data[,-1])-num_passing, paste0(100-perc_passing,"%"))
     )
     return(col_info)
   }
   
-  plot_variance_vs_median <- function(data, pass_filter, scale_y_axis=FALSE) {
+  plot_variance_vs_median <- function(data, pass_filter1, scale_y_axis=FALSE) {
     new_tib <- tibble(count_median = apply(data[,-1], 1, median)) %>%
-      add_column(variance = apply(data[,-1], 1, var), rank = rank(.)) %>%
-      mutate(determine = ifelse(variance >= pass_filter, "pass", "fail")) %>%
+      add_column(variance = apply(data[,-1], 1, var), rank = rank(.))
+    #Count the percentile variance
+    xPercentile <- quantile(new_tib$variance, pass_filter1/100)
+    new_tib <- new_tib%>%  
+      mutate(determine = ifelse(variance >= xPercentile, "pass", "fail")) %>%
       ggplot(aes(x= rank, y= variance, color=determine)) +
       geom_point() +
       scale_color_manual(values = c("fail" = "lightblue", "pass" = "darkblue")) +
       geom_smooth() +
+      theme_classic()+
       labs(title= "Median Count vs Variance", x="Rank(Median)", y = "Variance", color="Filter") +
       scale_y_log10()
     return(new_tib)
   }
   
-  plot_variance_vs_nonzero <- function(data, pass_filter2, scale_y_axis=FALSE) {
+  plot_nonzero_vs_median <- function(data, pass_filter2, scale_y_axis=FALSE) {
     new_tib <- tibble(count_median = apply(data[,-1], 1, median)) %>%
-      add_column(num_zeros = apply(data[, -1], 1, function(x) sum(x == 0)), rank = rank(.)) %>%
-      mutate(determine = ifelse(num_zeros >= pass_filter2, "pass", "fail")) %>%
+      add_column(non_zeros = apply(data[, -1], 1, function(x) sum(x != 0)), rank = rank(.)) %>%
+      mutate(determine = ifelse(non_zeros >= pass_filter2, "pass", "fail"),
+             num_zeros = ncol(data)-non_zeros) %>%
       ggplot(aes(x= rank, y= num_zeros, color=determine)) +
       geom_point() +
       scale_color_manual(values = c("fail" = "lightblue", "pass" = "darkblue")) +
       geom_smooth() +
+      theme_classic()+
       labs(title= "Median Count vs Number of zeros", x="Rank(Median)", y = "Number of zeros", color="Filter")
     return(new_tib)
   }
-  #Fitler the unqualified genes
-  filter_res <- function(data, pass_filter1, pass_filter2) {
-    filt_res <-tibble(num_zeros = apply(data[, -1], 1, function(x) sum(x == 0)),
-                      variance = apply(data[,-1], 1, var)) %>%
-      mutate(determine_var = ifelse(variance >= pass_filter1, "pass", "fail"),
-             determine_0 = ifelse(num_zeros >= pass_filter2, "pass", "fail"))%>%
-      filter(determine_var == "pass" & determine_0 == "pass")
-    return (filt_res)
-  }
+
   #generate filter matrix for heatmap
   filter_res <- function(data, pass_filter1, pass_filter2) {
     filt_res <- data %>% 
-      mutate(num_zeros = apply(data[, -1], 1, function(x) sum(x == 0)),
-             variance = apply(data[,-1], 1, var)) %>%
-      filter(variance > pass_filter1 & num_zeros > pass_filter1)%>% as.data.frame()
-    rownames(filt_res) <-filt_res[,1]
-    return (filt_res)
+      mutate(non_zeros = apply(data[, -1], 1, function(x) sum(x != 0)),
+             variance = apply(data[,-1], 1, var))
+    xPercentile <- quantile(filt_res$variance, pass_filter1/100)
+    filt_res <- filt_res %>% filter(variance > xPercentile & non_zeros > pass_filter2)%>% as.data.frame()
+    rownames(filt_res) <- filt_res[,1]
+    return (filt_res[,-c(1,71,72)])
   }
+  
   #generate count heatmap after filtering
   plot_heatmap <- function(filter_data) {
     coul <- rev(brewer.pal(11, 'RdBu'))
-    num_matrix <- filter_data[-c(1, 71, 72)] %>% as.matrix()%>% log2()
+    num_matrix <- filter_data%>% as.matrix()%>% log2()
     num_matrix[!is.finite(num_matrix)] <- NA
     heatmap.2(num_matrix, col = coul,trace = "none")
   }
   #generate PCA beeswarmplot
-  plot_beeswarm <-function(data){
+  plot_beeswarm <- function(data, N) {
     pca_results <- prcomp(scale(t(data[,-1]%>%as.data.frame())), center=FALSE, scale=FALSE)
-    plot_tibble <- as_tibble(pca_results$x)%>%
-      add_column( sample = rownames(pca_results$x), .after=0)
+    plot_tibble <- as_tibble(pca_results$x) %>%
+      add_column(sample = rownames(pca_results$x), .after = 0)
     meta <- tibble(sample = rownames(pca_results$x)) %>%
       mutate(Diagnosis = if_else(row_number() <= 49, "normal", "Huntington's Disease"))
-    biplot <- dplyr::left_join(plot_tibble, meta, by= "sample")
+    biplot <- dplyr::left_join(plot_tibble, meta, by = "sample")
     biplot$Diagnosis <- factor(ifelse(biplot$Diagnosis == "normal" & seq_len(nrow(biplot)) <= 49, "normal", "Huntington's Disease"))
-    biplot_select <- dplyr::select(biplot, 1:21, 71)
+    biplot_select <- dplyr::select(biplot, 1:N+1, 71)
     # Define a custom color palette with repeated colors
     my_colors <- rep(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999", "#66C2A5"), 2)
+    
+    top_var <- head(summary(pca_results)$importance[2, ], N)
+    top_var_percent <- 100 * top_var
+    # Create a vector of the top N principal components with their percentage contribution
+    pcs <- paste0("PC", seq_along(top_var_percent), " (", round(top_var_percent, 2), "%)")
+    
     beeswarm_plot <- biplot_select %>%
-      gather(key = "PC", value = "value", PC1:PC20) %>%
-      ggplot(aes(x = factor(PC, levels = paste0("PC", 1:20)), y = value, color = PC)) +
+      pivot_longer(cols = PC1:N, names_to = "PC", values_to = "value") %>%
+      ggplot(aes(x = factor(PC, levels = paste0("PC", 1:N)), y = value, color = PC)) +
       geom_quasirandom(size = 0.6, width = .3) +
-      scale_color_manual(values = my_colors) +
-      theme_classic()+
+      scale_color_manual(values = my_colors, labels = pcs) +
+      theme_classic() +
       labs(x = "PCs", y = "Values")
     beeswarm_plot
   }
@@ -381,7 +399,7 @@ server <- function(input, output, session) {
       scale_fill_manual(values =c('TRUE' = 'red', 'FALSE' = 'blue')) +
       theme_minimal() +
       coord_flip()+
-      theme(legend.position = "none", axis.text.y = element_text( hjust =1 ,size= 3),axis.title.x = element_text(size = 6))+ 
+      theme(legend.position = "none", axis.text.y = element_text( hjust =1 ,size= 7),axis.title.x = element_text(size = 10))+ 
       labs(title="fgsea results for Hallmark MSigDB gene sets", x= "",y= "Normalized Enrichment Score (NES)")
     return(NES_barplot)
   }
@@ -425,12 +443,43 @@ server <- function(input, output, session) {
     return(scatter)
   }
   
+  #generate sample summary table
+  output$sample_summary <- renderTable({
+    dataf <- sample_data()
+    if(is.null(dataf))
+      return(null)
+    samplesum_tab <- summary_tablef(dataf)
+    samplesum_tab
+  }) 
+  
+  #Generate sample file as table
+  output$sample_table <- DT::renderDataTable({
+    dataf <- sample_data()
+    if(is.null(dataf))
+      return(null)
+    dataf
+  }, options = list(
+    columnDefs = list(
+      list(className = "dt-center", targets = "_all"),
+      list(className = "dt-right", targets = "_all", render = JS("function(data, type, full, meta) {return '<div style=\\'width:50px; overflow:hidden\\'>' + data + '</div>';}"))
+    )
+  ))
+  
+  #output sample histogram plot
+  output$sample_plot <- renderPlot({
+    dataf <- sample_data() 
+    if(is.null(dataf))
+      return(null)
+    hist_plot <-histogram(dataf, input$sample_x)
+    hist_plot
+  })
+  
   #output count filter table
   output$filter_count <- renderTable({
     dataf <- count_data()
     if(is.null(dataf))
       return(null)
-    result_tab <- filter_table(dataf, input$slid_zero)
+    result_tab <- filter_table(dataf, input$slid_var ,input$slid_zero)
     result_tab
   }) 
   
@@ -440,7 +489,7 @@ server <- function(input, output, session) {
     if(is.null(dataf))
       return(null)
     plot1 <- plot_variance_vs_median(dataf,input$slid_var)
-    plot2 <- plot_variance_vs_nonzero (dataf,input$slid_zero)
+    plot2 <- plot_nonzero_vs_median (dataf,input$slid_zero)
     #ggplotly(plot) # turn the static plot into interactive but correspoding to use use plotlyOutput() and renderPlotly()
     grid.arrange(plot1, plot2, nrow=2)
   }) 
@@ -459,7 +508,7 @@ server <- function(input, output, session) {
     dataf <- count_data()
     if(is.null(dataf))
       return(null)
-    beeswarm_plot <- plot_beeswarm(dataf)
+    beeswarm_plot <- plot_beeswarm(dataf,input$top_PC)
     beeswarm_plot
   }) 
   

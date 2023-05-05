@@ -43,6 +43,41 @@ data_info <-mutate(data_info,across(c(4,8:11), as.double))
 }
 read<-read_sample("GSE64810_series_matrix.csv")
 
+# histogram
+
+histogram <- function(df, col_name) {
+  df[,11]<- log2(df[,11])
+  ggplot(df, aes(x = !!sym(col_name))) +
+    geom_histogram(binwidth = 1, color = "black", fill = "purple") +
+    labs(x = col_name, y = "Count")
+}
+histogram(read,"Age_of_death")
+
+
+
+sidebarLayout(
+  sidebarPanel(
+    radioButtons(inputId = "x_axis", label = "select y variable", choices = c("Post_mortem_interval","Age_of_death","RNA_integrity_number","mRNA_seq_reads"), selected = "Age_of_death"),
+    # Add color inputs
+    colourInput(inputId = "base", label = "Choose color", value = "#07B377"),
+    #Add a submit buttom
+    submitButton(text = "plot",icon = icon("chart-line"))
+  ),
+  mainPanel(
+    plotOutput("sample_plot",width = "90%", height = "550px")
+  )
+)
+
+
+
+
+
+
+
+
+
+
+
 summary_tablef <- function(data) {
   # Count number of rows and columns
   n_rows <- nrow(data)

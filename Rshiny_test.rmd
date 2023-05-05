@@ -1,0 +1,363 @@
+---
+title: "Rshiny_test_ouput"
+output: html_document
+date: "2023-05-04"
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+library(GEOquery)
+library(RColorBrewer)
+library(gplots)
+library(ggplot2)
+library(ggbeeswarm)
+library(SummarizedExperiment)
+library(DESeq2)
+library(dplyr)
+```
+
+
+```{r read in cout data}
+count_data <-read.table("GSE64810_mlhd_DESeq2_norm_counts_adjust.csv", sep="\t", header = TRUE, stringsAsFactors = FALSE)%>%
+      as_tibble()%>%dplyr::rename(gene = X)
+count_data
+```
+
+```{r test count filtered table}
+filter_table <- function(data, pass_filter2) {
+    count_sum <-tibble(num_zeros = apply(data[, -1], 1, function(x) sum(x == 0))) %>%
+      mutate(determine = ifelse((ncol(data)-num_zeros) >= pass_filter2, "pass", "fail")) %>%
+      summarise(num_passing = sum(determine == "pass"),
+                perc_passing = round(num_passing/nrow(.) * 100, 2))
+    # Create a data frame with filter information
+    col_info <- data.frame(
+      "Number of samples" = ncol(data),
+      "Number of genes" = nrow(data),
+      "Number and % of genes passing current filter" = paste0("Num of genes ",count_sum[[1]], ", percentage of genes",count_sum[[2]],"%"),
+      "Number and % of genes not passing current filter"= paste0("Num of genes ",nrow(data)-count_sum[[1]], ", percentage of genes",100-count_sum[[2]],"%"),
+      stringsAsFactors = FALSE
+    )%>% t()%>% as.data.frame()%>%as_tibble()
+    return(col_info)
+}
+filter_table(count_data,90)
+```
+
+```{r}
+count_sum <-tibble(non_zeros = apply(count_data[, -1], 1, function(x) sum(x != 0)))%>%
+      mutate(determine = ifelse(non_zeros >=65 , "pass", "fail")) 
+count_sum
+```
+
+```{r test count filtered table #Correct_version } 
+filter_table <- function(data, pass_filter1, pass_filter2) {
+  count_sum <-tibble(non_zeros = apply(data[, -1], 1, function(x) sum(x != 0)),
+                       variance = apply(data[,-1], 1, var)) %>%
+      mutate(determine_var = ifelse(variance >= 10^(pass_filter1), "pass", "fail"), 
+             determine_zero = ifelse(non_zeros >= pass_filter2, "pass", "fail")) %>%
+      summarise(num_passing = sum(determine_var == "pass" & determine_zero == "pass"),
+              perc_passing = round(num_passing/nrow(.) * 100, 2))
+  # Create a data frame with filter information
+  col_info <- data.frame(
+    metric = c("Number of samples", "Number of genes ", "Number and % of genes passing current filter", "Number and % of genes not passing current filter"),
+    value = c(ncol(data), nrow(data) , paste0(count_sum[[1]], " (", count_sum[[2]], "%)"), paste0(nrow(data)-count_sum[[1]], " (", 100-count_sum[[2]], "%)"))
+  )
+  return(col_info)
+}
+
+filter_table(count_data,1, 30)
+```
+
+
+```{r test count filtered table}
+tibble(variance = apply(count_data[,-1], 1, var))
+```
+
+## Including Plots
+
+You can also embed plots, for example:
+
+```{r pressure, echo=FALSE}
+#command+option+I --> add a new markdown cell
+```
+
+```{r #maybe will not be used}
+  #Fitler the unqualified genes
+  filter_unqua <- function(data, pass_filter1, pass_filter2) {
+    filt_res <-tibble(num_zeros = apply(data[, -1], 1, function(x) sum(x == 0)),
+                      variance = apply(data[,-1], 1, var)) %>%
+      mutate(determine_var = ifelse(variance >= pass_filter1, "pass", "fail"),
+             determine_0 = ifelse(num_zeros >= pass_filter2, "pass", "fail"))%>%
+      filter(determine_var == "pass" & determine_0 == "pass")
+    return (filt_res)
+  }
+```
+
+
+```{r generate matix for heatmap}
+
+  #generate filter matrix for heatmap
+  filter_res <- function(data, pass_filter1, pass_filter2) {
+    filt_res <- data %>% 
+      mutate(non_zeros = apply(data[, -1], 1, function(x) sum(x != 0)),
+             variance = apply(data[,-1], 1, var)) %>%
+      filter(variance > 10^(pass_filter1) & non_zeros > pass_filter2)%>% as.data.frame()
+    rownames(filt_res) <-filt_res[,1]
+    return (filt_res)
+  }
+
+heat_matrix <-filter_res(count_data,6,55)
+heat_matrix
+```
+
+```{r plot heatmap}
+  plot_heatmap <- function(filter_data) {
+    coul <- rev(brewer.pal(11, 'RdBu'))
+    num_matrix <- filter_data[-c(1, 71, 72)] %>% as.matrix()%>% log2()
+    num_matrix[!is.finite(num_matrix)] <- NA
+    heatmap.2(num_matrix, col = coul,trace = "none")
+  }
+plot_heatmap(heat_matrix)
+```
+```{r PCA plot variance}
+plot_beeswarm <-function(data){
+    pca_results <- prcomp(scale(t(data[,-1]%>%as.data.frame())), center=FALSE, scale=FALSE)
+    plot_tibble <- as_tibble(pca_results$x)%>%
+      add_column( sample = rownames(pca_results$x), .after=0)
+    meta <- tibble(sample = rownames(pca_results$x)) %>%
+      mutate(Diagnosis = if_else(row_number() <= 49, "normal", "Huntington's Disease"))
+    biplot <- dplyr::left_join(plot_tibble, meta, by= "sample")
+    biplot$Diagnosis <- factor(ifelse(biplot$Diagnosis == "normal" & seq_len(nrow(biplot)) <= 49, "normal", "Huntington's Disease"))
+    biplot_select <- dplyr::select(biplot, 1:21, 71)
+    # Define a custom color palette with repeated colors
+    my_colors <- rep(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999", "#66C2A5"), 2)
+    beeswarm_plot <- biplot_select %>%
+      gather(key = "PC", value = "value", PC1:PC20) %>%
+      ggplot(aes(x = factor(PC, levels = paste0("PC", 1:20)), y = value, color = PC)) +
+      geom_quasirandom(size = 0.6, width = .3) +
+      scale_color_manual(values = my_colors) +
+      theme_classic()+
+      labs(x = "PCs", y = "Values")
+    beeswarm_plot
+  }
+```
+
+
+```{r}
+plot_beeswarm(count_data)
+```
+
+
+```{r}
+pca_results <- prcomp(scale(t(count_data[,-1]%>%as.data.frame())), center=FALSE, scale=FALSE)
+    plot_tibble <- as_tibble(pca_results$x)%>%
+      add_column( sample = rownames(pca_results$x), .after=0)
+    plot_tibble 
+    summary(pca_results)$importance
+```
+
+
+```{r}
+#summary(pca_results)$importance#[2,1]
+top_var <- head(summary(pca_results)$importance[2, ], 20)
+top_var_percent <- 100*top_var
+paste0("PC1 (",top_var_percent[1],"%)")
+paste0("PC2 (",top_var_percent[2],"%)")
+
+```
+```{r}
+top_var <- head(summary(pca_results)$importance[2, ], 20)
+top_var_percent <- 100 * top_var
+# Create a vector of the top N principal components with their percentage contribution
+pcs <- paste0("PC", seq_along(top_var_percent), " (", round(top_var_percent, 2), "%)")
+```
+
+
+```{r}
+plot_beeswarm <- function(data, N) {
+  pca_results <- prcomp(scale(t(data[,-1]%>%as.data.frame())), center=FALSE, scale=FALSE)
+  plot_tibble <- as_tibble(pca_results$x) %>%
+    add_column(sample = rownames(pca_results$x), .after = 0)
+  meta <- tibble(sample = rownames(pca_results$x)) %>%
+    mutate(Diagnosis = if_else(row_number() <= 49, "normal", "Huntington's Disease"))
+  biplot <- dplyr::left_join(plot_tibble, meta, by = "sample")
+  biplot$Diagnosis <- factor(ifelse(biplot$Diagnosis == "normal" & seq_len(nrow(biplot)) <= 49, "normal", "Huntington's Disease"))
+  biplot_select <- dplyr::select(biplot, 1:N+1, 71)
+  # Define a custom color palette with repeated colors
+  my_colors <- rep(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999", "#66C2A5"), 2)
+  
+  top_var <- head(summary(pca_results)$importance[2, ], N)
+  top_var_percent <- 100 * top_var
+  # Create a vector of the top N principal components with their percentage contribution
+  pcs <- paste0("PC", seq_along(top_var_percent), " (", round(top_var_percent, 2), "%)")
+  
+  beeswarm_plot <- biplot_select %>%
+    pivot_longer(cols = PC1:N, names_to = "PC", values_to = "value") %>%
+    ggplot(aes(x = factor(PC, levels = paste0("PC", 1:N)), y = value, color = PC)) +
+    geom_quasirandom(size = 0.6, width = .3) +
+    scale_color_manual(values = my_colors, labels = pcs) +
+    theme_classic() +
+    labs(x = "PCs", y = "Values")
+  
+  beeswarm_plot
+}
+
+plot_beeswarm(count_data,15)
+```
+
+```{r}
+plot_beeswarm <- function(data, N) {
+  pca_results <- prcomp(scale(t(data[,-1]%>%as.data.frame())), center=FALSE, scale=FALSE)
+  plot_tibble <- as_tibble(pca_results$x) %>%
+    add_column(sample = rownames(pca_results$x), .after = 0)
+  meta <- tibble(sample = rownames(pca_results$x)) %>%
+    mutate(Diagnosis = if_else(row_number() <= 49, "normal", "Huntington's Disease"))
+  biplot <- dplyr::left_join(plot_tibble, meta, by = "sample")
+  biplot$Diagnosis <- factor(ifelse(biplot$Diagnosis == "normal" & seq_len(nrow(biplot)) <= 49, "normal", "Huntington's Disease"))
+  biplot_select <- dplyr::select(biplot, 1:N+1, 71)
+  # Define a custom color palette with repeated colors
+  my_colors <- rep(c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#FF7F00", "#FFFF33", "#A65628", "#F781BF", "#999999", "#66C2A5"), 2)
+  
+  top_var <- head(summary(pca_results)$importance[2, ], N)
+  top_var_percent <- 100 * top_var
+  # Create a vector of the top N principal components with their percentage contribution
+  pcs <- paste0("PC", seq_along(top_var_percent), " (", round(top_var_percent, 2), "%)")
+  
+  beeswarm_plot <- biplot_select %>%
+    gather(key = "PC", value = "value", paste0("PC1:PC", N)) %>%
+    ggplot(aes(x = factor(PC, levels = paste0("PC", 1:N)), y = value, color = PC)) +
+    geom_quasirandom(size = 0.6, width = .3) +
+    scale_color_manual(values = my_colors, labels = pcs) +
+    theme_classic() +
+    labs(x = "PCs", y = "Values")
+  
+  beeswarm_plot
+}
+plot_beeswarm(count_data,5)
+```
+```{r}
+filterering_variance <- function(counts_matrix, slider) {
+    
+    county <- counts_matrix[,-1] 
+    counts_matrix$variance <- rowVars(as.matrix(county))
+    counts_matrix <- counts_matrix[rev(order(counts_matrix$variance)),]
+    input_value <- slider/100 #assumes slider is between 1 and 100
+    counts_matrix <- counts_matrix[1:floor(nrow(counts_matrix)*input_value), ]
+    counts_variance <- counts_matrix[, c(1,71)]
+    
+    counts_columns <- ncol(county)
+    counts_rows <- nrow(county)
+    counts_variance_columns <- ncol(counts_variance)
+    counts_variance_rows <- nrow(counts_variance)
+    
+    Information <- c("Number of Samples", "Number of Genes", "Number of Passing", "Percent Passing,", "Number not Passing", 
+                     "Percent not Passing")
+    
+    Values <- c(counts_columns, counts_rows, counts_variance_rows, (counts_variance_rows/counts_rows) * 100, (28087 - counts_variance_rows), (100 - (counts_variance_rows/counts_rows) * 100))
+    summary_variance <- data_frame(Information, Values)
+    
+    return(summary_variance)  
+}
+filterering_variance(count_data, 11)
+
+```
+```{r}
+count_matrix <-count_data[,-1]
+geneVar <- apply(count_matrix, 1, var)
+geneVar 
+xPercentile <- quantile(geneVar, 0.9)
+xPercentile
+```
+```{r}
+xPercentileGenes <- which(geneVar >= xPercentile)
+xPercentileExpr <- count_matrix[xPercentileGenes, ]
+xPercentileExpr
+ 
+```
+```{r}
+filter_table <- function(data, pass_filter1, pass_filter2) {
+  count_sum <-data[,-1]
+  count_sum$non_zeros <- apply(data[,-1], 1, function(x) sum(x != 0))
+  geneVar <- apply(data[,-1], 1, var)
+  #Count the percentile variance
+  xPercentile <- quantile(geneVar, pass_filter1/100) #assume the filter is 1 to 100
+  #find out which rows pass the filter1
+  pass_xPercentile <- which(geneVar >= xPercentile)
+  #subset the matrix to let the rows that pass remain
+  count_sum <- count_sum[pass_xPercentile, ]
+  count_sum$pass_zero <- ifelse(count_sum$non_zeros >= pass_filter2, "pass", "fail")
+  num_passing <- sum(count_sum$pass_zero == "pass")
+  perc_passing <- round(num_passing/nrow(count_data) * 100, 2)
+  # Create a data frame with filter information
+  col_info <- data.frame(
+    metric = c("Number of samples", "Number of genes ", "Number of genes passing", " % of genes passing", "Number of genes not passing","% of genes not passing"),
+    value = c(ncol(data[,-1]), nrow(data[,-1]) , num_passing, paste0(perc_passing,"%"), nrow(data[,-1])-num_passing, paste0(100-perc_passing,"%"))
+    )
+    return(col_info)
+}
+
+filter_table(count_data, 12,50)
+```
+
+
+```{r}
+count_sum <-count_data[,-1]
+  count_sum$non_zeros <- apply(count_data[,-1], 1, function(x) sum(x != 0))
+  geneVar <- apply(count_data[,-1], 1, var)
+  xPercentile <- quantile(geneVar, 90/100) #assume the filter is 1 to 100
+  pass_xPercentile <- which(geneVar >= xPercentile)
+#pass_xPercentile
+    
+```
+
+
+```{r}
+data<-count_data
+new_tib <- tibble(count_median = apply(data[,-1], 1, median)) %>%
+      add_column(variance = apply(data[,-1], 1, var), rank = rank(.))
+#Count the percentile variance
+  xPercentile <- quantile(new_tib$variance, pass_filter/100)
+new_tib <- new_tib%>%  
+        mutate(determine = ifelse(variance >= xPercentile, "pass", "fail")) %>%
+        ggplot(aes(x= rank, y= variance, color=determine)) +
+        geom_point() +
+        scale_color_manual(values = c("fail" = "lightblue", "pass" = "darkblue")) +
+        geom_smooth() +
+        theme_classic()+
+        labs(title= "Median Count vs Variance", x="Rank(Median)", y = "Variance", color="Filter") +
+        scale_y_log10()
+```
+
+
+```{r}
+  #generate filter matrix for heatmap
+  filter_res <- function(data, pass_filter1, pass_filter2) {
+    filt_res <- data %>% 
+      mutate(non_zeros = apply(data[, -1], 1, function(x) sum(x != 0)),
+             variance = apply(data[,-1], 1, var))
+    xPercentile <- quantile(filt_res$variance, pass_filter1/100)
+    filt_res <- filt_res %>% filter(variance > xPercentile & non_zeros > pass_filter2)%>% as.data.frame()
+    rownames(filt_res) <- filt_res[,1]
+    return (filt_res[,-c(1,71,72)])
+  }
+filter_res(count_data,12,50)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+
+```{r}
+```
+
+Note that the `echo = FALSE` parameter was added to the code chunk to prevent printing of the R code that generated the plot.
