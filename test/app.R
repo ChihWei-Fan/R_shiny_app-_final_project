@@ -14,34 +14,33 @@ ui <- fluidPage(
   titlePanel("BF591 final Project"),
   tabsetPanel(
     tabPanel(title = "Sample",
-             
-             sidebarLayout(
-               sidebarPanel( width = 3,
-                 fileInput(inputId = "sample_file", label = "Load a CSV file", accept = ".csv"),
-                 submitButton(text = "Submit",icon = icon("chart-line"))
-               ),
+      sidebarLayout(
+       sidebarPanel( width = 3,
+         fileInput(inputId = "sample_file", label = "Load a CSV file", accept = ".csv"),
+         submitButton(text = "Submit",icon = icon("chart-line"))
+       ),
                
                # Show a plot of the generated distribution
-               mainPanel(
-                 tabsetPanel(
-                   tabPanel(title = "Summary",
-                            tableOutput("sample_summary")
-                   ),
-                   tabPanel(title = "Table",
-                           div(DT::dataTableOutput("sample_table"), style = "font-size:80%; width: 30%;")
-                   ),
-                   tabPanel(title = "Plot",
-                      sidebarPanel( width = 3,
-                        radioButtons(inputId = "sample_x", label = "select y variable", choices = c("Post mortem interval","Age of death","RNA integrity number","mRNA seq reads"), selected = "Age of death"),
-                        submitButton(text = "Submit",icon = icon("chart-line"))
-                      ),
-                      mainPanel(
-                        plotOutput("sample_plot")
-                      )
-                   )
-                 )
-               )
-             )
+        mainPanel(
+          tabsetPanel(
+            tabPanel(title = "Summary",
+                    tableOutput("sample_summary")
+            ),
+            tabPanel(title = "Table",
+              div(DT::dataTableOutput("sample_table"), style = "font-size:80%; width: 30%;")
+            ),
+            tabPanel(title = "Plot",
+              sidebarPanel( width = 3,
+                radioButtons(inputId = "sample_x", label = "select y variable", choices = c("Post mortem interval","Age of death","RNA integrity number","mRNA-seq reads"), selected = "Age of death"),
+                  submitButton(text = "Submit",icon = icon("chart-line"))
+              ),
+              mainPanel(
+                plotOutput("sample_plot")
+              )
+            )
+          )
+        )
+      )
     ),  
     
     tabPanel(title = "Counts",
@@ -136,7 +135,7 @@ ui <- fluidPage(
             tabPanel(title = "Pathway barplot",
               sidebarLayout(
                 sidebarPanel( width = 3,
-                  sliderInput(inputId = "pth_threshold",label = "Top results by padj value", min = -48, max = 0, value = -20, step = 1),
+                  sliderInput(inputId = "pth_threshold",label = "Top results by padj value smaller than 10^(X)", min = -48, max = 0, value = -20, step = 1),
                   submitButton(text = "Submit",icon = icon("chart-line"))
                 ),
                 # Show a plot of the fgsea bars of top results
@@ -148,10 +147,10 @@ ui <- fluidPage(
             tabPanel(title = "Pathway table",
               sidebarLayout(
                 sidebarPanel(width = 3,
-                            sliderInput(inputId = "path_slid",label = "filter table by padj value", min = -48, max = 0, value = -20, step = 1),
-                            radioButtons(inputId = "all_path", label = "select pathways",choices = c("All","Postive","Negative"), selected = NULL),
-                            submitButton(text = "Submit",icon = icon("chart-line")),
-                            downloadButton(outputId = "download_fgsea_table", label = "Download")
+                  sliderInput(inputId = "path_slid",label = "filter table by padj value", min = -48, max = 0, value = -20, step = 1),
+                  radioButtons(inputId = "all_path", label = "select pathways",choices = c("All","Postive","Negative"), selected = NULL),
+                  submitButton(text = "Submit",icon = icon("chart-line")),
+                  downloadButton(outputId = "download_fgsea_table", label = "Download")
                 ),
                 # Show a plot of the fgsea bars of top results
                 mainPanel(
@@ -201,7 +200,7 @@ server <- function(input, output, session) {
       apply(2, function(x) gsub("rin: ", "", x)) %>%
       apply(2, function(x) gsub("mrna-seq reads: ", "", x)) %>%
       as.data.frame() 
-    #names(unknowndata_info) <- as.character(unknowndata_info[1,])
+    rownames(data_info) <- NULL
     data_info <-mutate(data_info,across(c(4,8:11), as.double))
   })
   
@@ -229,8 +228,10 @@ server <- function(input, output, session) {
   
   #Generate histogram of sample
   histogram <- function(df, col_name) {
+    binwidth <- if_else(!!sym(col_name) == "mRNA-seq reads", 20000000, 2)
     ggplot(df, aes(x = !!sym(col_name))) +
-      geom_histogram(binwidth = 2, color = "black", fill = "purple") +
+      geom_histogram(binwidth = binwidth, color = "black", fill = "purple") +
+      theme_linedraw()+
       labs(x = col_name, y = "Count")
   }
   
@@ -309,9 +310,9 @@ server <- function(input, output, session) {
   #generate count heatmap after filtering
   plot_heatmap <- function(filter_data) {
     coul <- rev(brewer.pal(11, 'RdBu'))
-    num_matrix <- filter_data%>% as.matrix()%>% log2()
+    num_matrix <- filter_data %>% as.matrix() %>% log2()
     num_matrix[!is.finite(num_matrix)] <- NA
-    heatmap.2(num_matrix, col = coul,trace = "none")
+    heatmap.2(num_matrix, col = coul, trace = "none",xlab = "Samples", ylab = "Genes",margins = c(5, 8),key = TRUE, key.title = "Expression level", key.xlab = "Expression", key.ylab = NULL)
   }
   #generate PCA beeswarmplot
   plot_beeswarm <- function(data, N) {
@@ -337,7 +338,7 @@ server <- function(input, output, session) {
       geom_quasirandom(size = 0.6, width = .3) +
       scale_color_manual(values = my_colors, labels = pcs) +
       theme_classic() +
-      labs(x = "PCs", y = "Values")
+      labs(x = "PCs", y = "Values", title = "Distribution of Values across Multiple PCs ")
     beeswarm_plot
   }
   #Read in DESeq data
@@ -356,7 +357,6 @@ server <- function(input, output, session) {
       dplyr::mutate(status = dplyr::case_when(padj < 10^(slider) ~ "TRUE",
                                               padj >= 10^(slider) ~ "FALSE",
                                               TRUE ~ "NA"))
-    
     # specify color based on the slider value
     df$colors <- ifelse(df$status == "FALSE", color1, color2)
     #plotting volcano plot
@@ -387,26 +387,9 @@ server <- function(input, output, session) {
     return(data)
   })
   
-  #Generate barplot for top pathways of fgsea
-  fgsea_top_pathways <- function(fgsea_results, threshold){
-    top_positive_nes <- fgsea_results %>%
-      dplyr::filter(padj < 10^(threshold) & NES > 0)
-    top_negative_nes <- fgsea_results %>%
-      dplyr::filter(padj < 10^(threshold) & NES <0)
-    NES_barplot <- dplyr::bind_rows(top_positive_nes, top_negative_nes)%>%
-      ggplot() +
-      geom_col(aes(x=reorder(pathway,+NES), y=NES, fill = NES > 0))+
-      scale_fill_manual(values =c('TRUE' = 'red', 'FALSE' = 'blue')) +
-      theme_minimal() +
-      coord_flip()+
-      theme(legend.position = "none", axis.text.y = element_text( hjust =1 ,size= 7),axis.title.x = element_text(size = 10))+ 
-      labs(title="fgsea results for Hallmark MSigDB gene sets", x= "",y= "Normalized Enrichment Score (NES)")
-    return(NES_barplot)
-  }
-  
   #Generate the filter pathway tables in fgsea
   gsea_table <- reactive({
-    filter_df<-fgsea_data()
+    filter_df <- fgsea_data()
     filtered_df <- dplyr::filter(filter_df, padj < 10^(input$path_slid))
     if (input$all_path == "All") {
       filtered_df <- filtered_df
@@ -421,27 +404,26 @@ server <- function(input, output, session) {
     return(filtered_df)
   })
   
-  #Generate scatter plot in GSEA
-  scatter_plot <- function(dataf, slider) {
-    # modify the dataframe
-    df <- dplyr::mutate(dataf, padj = -log10(padj)) %>%
-      dplyr::mutate(status = dplyr::case_when(padj < 10^(slider) ~ "TRUE",
-                                              padj >= 10^(slider) ~ "FALSE",
-                                              TRUE ~ "NA"))
-    
-    # specify color based on the slider value
-    df$colors <- ifelse(df$status == "FALSE", "orange", "grey")
-    # plotting volcano plot
-    scatter <- ggplot(df, aes(x = NES, y = padj, color = colors)) +
-      geom_point(size = 1) +
-      scale_color_manual(values = c("orange","grey"),
-                         labels = c("FALSE", "TRUE")) +
-      labs(x = "NES", y = "-log10(padj)",color = paste0( "padj < 10^",slider )) +
-      theme_bw()+
-      theme(legend.position = "bottom") # move legend to bottom of plot
-    
-    return(scatter)
+  #Generate barplot for top pathways of fgsea
+  fgsea_top_pathways <- function(fgsea_results, threshold){
+    top_positive_nes <- arrange(fgsea_results, desc(NES)) %>%
+      dplyr::filter(padj < 10^(threshold) & NES > 0)
+    top_negative_nes <- arrange(fgsea_results, desc(NES)) %>%
+      dplyr::filter(padj < 10^(threshold) & NES < 0)
+    NES_barplot <- dplyr::bind_rows(top_positive_nes, top_negative_nes)%>%
+      ggplot() +
+      geom_col(aes(x=reorder(pathway,+NES), y=NES, fill = NES > 0))+
+      scale_fill_manual(values =c('TRUE' = 'red', 'FALSE' = 'blue')) +
+      theme_minimal() +
+      coord_flip()+
+      theme(legend.position = "none", axis.text.y = element_text( hjust =1 ,size= 7),axis.title.x = element_text(size = 10))+ 
+      labs(title="fgsea results for Hallmark MSigDB gene sets", x= "",y= "Normalized Enrichment Score (NES)")
+    return(NES_barplot)
   }
+  
+  
+  #Generate scatter plot in GSEA
+
   
   #generate sample summary table
   output$sample_summary <- renderTable({
@@ -501,7 +483,7 @@ server <- function(input, output, session) {
       return(null)
     num_matrix <- filter_res(dataf, input$slid_var, input$slid_zero)
     plot_heatmap(num_matrix)
-  }) 
+  })
   
   #Output count PCA beeswarmplot
   output$pca_plot <- renderPlot({
@@ -552,16 +534,40 @@ server <- function(input, output, session) {
   #let the input be reactive so when we move the bar, the output would change
   output$fgsea_filt_table <- DT::renderDataTable({
     gsea_table()
-  }) 
+  })
+  
+  
+  #Output download fgsea table
+  output$download_fgsea_table <- downloadHandler(
+    filename = function() {
+      paste("fgsea_table", Sys.Date(), ".csv", sep="")
+    },
+    content = function(file) {
+      write.csv(gsea_table(), file, row.names = FALSE)
+    }
+  )
+  
   #Output fgsea filter scatter plot
   output$NES_scatter <- renderPlot({
     dataf <- fgsea_data()
-    if(is.null(dataf))
-      return(null)
-    scatter_plot <- scatter_plot(dataf,input$scatter_slid)
-    scatter_plot
+    slider<-input$scatter_slid
+    df <- dplyr::mutate(dataf, new_padj = -log10(padj)) %>%
+      dplyr::mutate(status = dplyr::case_when(padj < 10^(slider) ~ "TRUE",
+                                              padj >= 10^(slider) ~ "FALSE"))
+    # specify color based on the slider value
+    df$colors <- ifelse(df$status == "FALSE", "orange", "grey")
+    # plotting scatter plot
+    scatter <- ggplot(df, aes(x = NES, y = new_padj, color = colors)) +
+      geom_point(size = 1) +
+      scale_color_manual(values = c("orange","grey"),
+                         labels = c("TRUE", "FALSE")) +
+      labs(x = "NES", y = "-log10(padj)",color = paste0( "padj < 10^",slider )) +
+      theme_bw()+
+      theme(legend.position = "bottom") # move legend to bottom of plot
+    return(scatter)
   }) 
   
+
   
 }
 

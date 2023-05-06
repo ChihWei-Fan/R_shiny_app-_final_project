@@ -254,11 +254,13 @@ human_syms <- symbol_tib[,2]%>%
 filter_tib <- symbol_tib[symbol_tib$hgnc_symbol %in% human_syms, ]
 #Combine the tibble idchange_res (with all the values) with the filter_tib(with wanted symbol) using "inner_join() "
 combine_res <- inner_join(idchange_res, filter_tib, by=c("gene"="ensembl_gene_id"))
+
 combine_res2 <- dplyr::select(DESeq_res, symbol, log2FoldChange) %>% 
   na.omit() %>%  #make sure no NA in rows
   dplyr::distinct() %>%  # make sure each row is unique
   dplyr::arrange(desc(log2FoldChange))%>%
   tibble::deframe() #deframe() converts two-column data frames to a named vector or list, using the first column as name and the second column as value.
+
 #Read in gmt file
 hallmark_pathways_fgsea <- fgsea::gmtPathways("c2.all.v2023.1.Hs.symbols.gmt")  #"c2.cp.v7.5.1.symbols.gmt")
 ## match the genes provided in the C2 Canonical Pathways gene sets

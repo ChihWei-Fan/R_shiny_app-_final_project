@@ -340,12 +340,154 @@ new_tib <- new_tib%>%
     rownames(filt_res) <- filt_res[,1]
     return (filt_res[,-c(1,71,72)])
   }
-filter_res(count_data,12,50)
+filt_data<-filter_res(count_data,90,50)
+filt_data
+```
+```{r}
+  #generate count heatmap after filtering
+plot_heatmap <- function(filter_data) {
+  coul <- rev(brewer.pal(11, 'RdBu'))
+  num_matrix <- filter_data %>% as.matrix() %>% log2()
+  num_matrix[!is.finite(num_matrix)] <- NA
+  
+  heatmap.2(num_matrix, col = coul, trace = "none",xlab = "Samples", ylab = "Genes",margins = c(5, 8),key = TRUE, key.title = "Expression level", key.xlab = "Expression", key.ylab = NULL)
+}
+plot_heatmap (filt_data)
+```
+
+
+```{r}
+data <-read.csv("GSE64810_series_matrix.csv", sep="\t", header = FALSE, stringsAsFactors = FALSE)%>%as_tibble()
+data
 ```
 
 
 ```{r}
 
+data_info <- data %>% 
+      mutate(V1 = apply(data["V1"],1, function(x) gsub("!", "", x))) %>% 
+      as.data.frame()
+data_info<-data_info[c(1:3,6,8:14),]%>%
+      mutate(Columns = c("GEO accession","Status","Submission date", "Channel count","Organism source","Tissue source","Diagnosis", "Post mortem interval","Age of death","RNA integrity number","mRNA-seq reads"), .before = 1) %>%
+      select(-V1)%>%
+      t()
+    colnames(data_info) <- data_info[1,]
+    data_info<- data_info[-1,]%>%
+      apply(2, function(x) gsub("tissue: ", "", x)) %>%
+      apply(2, function(x) gsub("diagnosis: ", "", x)) %>%
+      apply(2, function(x) gsub("pmi: ", "", x)) %>%
+      apply(2, function(x) gsub("age of death: ", "", x)) %>%
+      apply(2, function(x) gsub("rin: ", "", x)) %>%
+      apply(2, function(x) gsub("mrna-seq reads: ", "", x)) %>%
+      as.data.frame()
+rownames(data_info) <- NULL
+data_info <-mutate(data_info,across(c(4,8:11), as.double))
+data_info
+```
+
+
+```{r}
+histogram <- function(df, col_name) {
+  binwidth <- if_else(!!sym(col_name) == "mRNA-seq reads", 20000000, 2)
+  
+  ggplot(df, aes(x = !!sym(col_name))) +
+    geom_histogram(binwidth = binwidth, color = "black", fill = "purple") +
+    theme_linedraw()+
+    labs(x = col_name, y = "Count")
+}
+histogram(data_info, "mRNA-seq reads")
+
+```
+
+
+```{r}
+#Read in DeSeq2 result csv
+DESeq_res <- read.table("GSE64810_mlhd_DESeq2_diffexp_DESeq2_outlier_trimmed_adjust.csv", sep="\t", header = TRUE, stringsAsFactors = FALSE)%>%
+  as_tibble()%>% dplyr::rename(gene= X)
+```
+
+```{r}
+#Label Up or down in result data for running gsea
+label_res <- function(deseq2_res, padj_threshold){
+    # base on p-adj add a new col to specify each row's condition # case_when https://www.statology.org/dplyr-case_when/
+    p0_vs_Ad_de<-dplyr::mutate(deseq2_res, volc_plot_status = dplyr::case_when(log2FoldChange > 0 & padj < padj_threshold ~"UP",
+                                                      log2FoldChange < 0 & padj < padj_threshold ~"DOWN",
+                                                      TRUE ~ "NS"))
+  #dplyr::mutate(volc_plot_status =  ifelse(log2FoldChange > 0 & padj < padj_threshold ,
+  #                       log2FoldChange < 0 & padj < padj_threshold ~"DOWN") 
+  return(p0_vs_Ad_de)
+}
+labeled_res<-label_res(DESeq_res,.10)
+```
+
+
+```{r}
+combine_res2 <- dplyr::select(DESeq_res, symbol, log2FoldChange) %>% 
+  na.omit() %>%  #make sure no NA in rows
+  dplyr::distinct() %>%  # make sure each row is unique
+  dplyr::arrange(desc(log2FoldChange))%>%
+  tibble::deframe() #deframe() converts two-column data frames to a named vector or list, using the first column as name and the second column as value.
+```
+
+
+```{r}
+#Read in gmt file
+hallmark_pathways_fgsea <- fgsea::gmtPathways("c2.cgp.v2023.1.Hs.symbols.gmt")  ##c2.all.v2023.1.Hs.symbols.gmt")
+## match the genes provided in the C2 Canonical Pathways gene sets
+fgsea_results <-fgsea(hallmark_pathways_fgsea, combine_res2, minSize = 15, maxSize= 500)
+#turn fgsea_result into tibble, to let us perform basic exploration easily
+fgsea_results <- fgsea_results%>% as.data.frame()
+#remove the underline in pathway name
+fgsea_results$pathway <-gsub("_"," ",fgsea_results$pathway)
+#descending log2foldchange as a ranking metric
+fgsea_result_df <-fgsea_results %>% arrange(NES)%>%as_tibble()
+# Convert the last column from list to character
+fgsea_result_df$leadingEdge <- sapply(fgsea_result_df$leadingEdge, paste, collapse = ",")
+# Write the data to a CSV file
+write.csv(fgsea_result_df, "fgsea_result2.csv", row.names = FALSE)
+```
+
+```{r}
+gsea_data <-read.csv("fgsea_result.csv", header = TRUE, stringsAsFactors = FALSE)%>%
+      as_tibble()
+gsea_data
+```
+
+```{r}
+ #Generate scatter plot in GSEA
+  scatter_plot <- function(dataf, slider) {
+    # modify the dataframe
+    df <- dplyr::mutate(dataf, new_padj = -log10(padj)) %>%
+      dplyr::mutate(status = dplyr::case_when(padj < 10^(slider) ~ "TRUE",
+                                              padj >= 10^(slider) ~ "FALSE"))
+    
+    # specify color based on the slider value
+    df$colors <- ifelse(df$status == "FALSE", "orange", "grey")
+    # plotting scatter plot
+    scatter <- ggplot(df, aes(x = NES, y = new_padj, color = colors)) +
+      geom_point(size = 1) +
+      scale_color_manual(values = c("orange","grey"),
+                         labels = c("TRUE", "FALSE")) +
+      labs(x = "NES", y = "-log10(padj)",color = paste0( "padj < 10^",slider )) +
+      theme_bw()+
+      theme(legend.position = "bottom") # move legend to bottom of plot
+    
+    return(scatter)
+  }
+scatter_plot(gsea_data, -20)
+```
+
+
+```{r}
+
+```
+
+
+```{r}
+```
+
+
+```{r}
 ```
 
 
