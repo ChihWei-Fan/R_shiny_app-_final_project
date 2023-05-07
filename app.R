@@ -27,7 +27,7 @@ ui <- fluidPage(
             tabPanel(title = "Summary of Sample File",
                     tableOutput("sample_summary")
             ),
-            tabPanel(title = "Sample Content Table",
+            tabPanel(title = "Metadata",
               div(DT::dataTableOutput("sample_table"), style = "font-size:80%; width: 30%;")
             ),
             tabPanel(title = "Sample Distribution Plot",
@@ -61,13 +61,13 @@ ui <- fluidPage(
             tabPanel(title = "Filter Results",
               tableOutput("filter_count")
             ),
-            tabPanel(title = "Scatter Plot of Fitered Count Matrix",
+            tabPanel(title = "Diagnostic plots",
               plotOutput("count_scatter")
             ),
-            tabPanel(title = "Heatmap of Fitered Count Matrix",
+            tabPanel(title = "Heatmap",
               plotOutput("clus_heatmap",width = "80%", height = "500px")
             ),
-            tabPanel(title = "PCA of Count Matrix",
+            tabPanel(title = "PCA",
               sidebarPanel(width = 3,
                 sliderInput("top_PC",label = "Select the TOP PCs you want to plot", min = 3, max = 45, value =8, step = 1),
                 submitButton(text = "Submit",icon = icon("chart-line"))
